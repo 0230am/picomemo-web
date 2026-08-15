@@ -1,0 +1,31 @@
+{
+  "picomemo": {
+    "repository": "https://github.com/0230am/picomemo.git",
+    "tag": "1.2.1",
+    "baseCommit": "616b7014ea293a1fd5f785b2535db5bdaa0acfdf",
+    "commit": "ff75cfc41b9ea8e27e4fe961c08dd2bd8b922317",
+    "tree": "81f38825f67a4d3819f823be9e2821624047ba96"
+  },
+  "emscripten": {
+    "repository": "https://github.com/emscripten-core/emsdk.git",
+    "version": "6.0.4",
+    "commit": "224ec5f9f2f72f09f9ce0e26d66bae7dbd8b692f",
+    "emccVersion": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.4 (fe5be6afdff43ad58860d821fcc8572a23f92d19)"
+  },
+  "mbedtls": {
+    "url": "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.4/mbedtls-3.6.4.tar.bz2",
+    "version": "3.6.4",
+    "sha256": "ec35b18a6c593cf98c3e30db8b98ff93e8940a8c4e690e66b41dfc011d678110",
+    "sourceInputsSha256": "d44555fec6dd3f8a9a2e0545a507e78195d509cf7e23cf88b24410344715251c",
+    "buildConfigurationSha256": "c8bc23e1ef624569458f2753bf41d654bad2afa358f4585e1fa87bb0c7ff8ca7",
+    "librarySha256": "aba5ceaab7734f23a08118f622855e0191f1e9d0667162dde4316146a13f73c8"
+  },
+  "pythonInterop": { "python": "3.14.5", "pip": "25.3", "omemo": "2.1.0", "twomemo": "2.1.0" },
+  "productionArtifact": {
+    "backendVersion": "1.2.1+ff75cfc41b9ea8e27e4fe961c08dd2bd8b922317",
+    "featureSet": "omemo0+omemo2",
+    "declarationSha256": "b094afe261c8f07f9314ef81b0af7fba14da6b60707db0e58e0e2518986d01e2",
+    "loaderSha256": "4cf18ad8f190f48bff989e3b9769984fc6dab85595e2b853cbcbd25cc0407095",
+    "wasmSha256": "8cf0ddc7ec45849bd99ffa1c405e8a6aa9c26384b76f5afc9b5bd95d5c7e0e94"
+  }
+}

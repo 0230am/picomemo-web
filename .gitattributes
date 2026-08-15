@@ -1,0 +1,3 @@
+src/generated/picomemo.d.mts -text
+src/generated/picomemo.mjs -text whitespace=cr-at-eol
+src/generated/picomemo.wasm -text

@@ -1,0 +1,32 @@
+picomemo browser binding runtime third-party notices
+
+This directory accompanies distributions containing the locked picomemo
+WebAssembly runtime. Exact source identities and artifact hashes are recorded
+in source-metadata.json in the package and build-lock.json in the source tree.
+
+picomemo
+  Copyright 2024 mierenhoop
+  The selected Mbed TLS driver additionally carries:
+  Copyright 2026 mierenhoop
+  Licensed under the ISC terms in picomemo-ISC.txt.
+
+HACL* / KaRaMeL
+  Copyright (c) INRIA and Microsoft Corporation. All rights reserved.
+  Copyright (c) 2016-2022 INRIA, CMU and Microsoft Corporation
+  Copyright (c) 2022-2023 HACL* Contributors
+  Licensed under the Apache License 2.0 and MIT licenses. This package selects the
+  MIT terms reproduced in HACL-KaRaMeL-MIT.txt. The Apache 2.0 text is also
+  reproduced in mbedtls-LICENSE.txt.
+
+Mbed TLS 3.6.4
+  Copyright The Mbed TLS Contributors
+  Dual-licensed under Apache-2.0 or GPL-2.0-or-later. This package selects
+  Apache-2.0. The upstream dual-license file is reproduced without alteration
+  in mbedtls-LICENSE.txt.
+
+Emscripten 6.0.4 and musl/emmalloc runtime
+  Emscripten's license is reproduced in emscripten-LICENSE.txt. The complete
+  musl COPYRIGHT file, including its file-specific provenance, is reproduced
+  in musl-COPYRIGHT.txt.
+
+No OpenSSL or picomemo c25519.c code is compiled into this artifact.

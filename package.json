@@ -1,0 +1,33 @@
+{
+  "name": "picomemo",
+  "version": "0.1.1",
+  "description": "Experimental unofficial Worker-only browser binding for picomemo",
+  "type": "module",
+  "license": "ISC",
+  "repository": { "type": "git", "url": "git+https://github.com/0230am/picomemo-web.git" },
+  "homepage": "https://github.com/0230am/picomemo-web",
+  "bugs": "https://github.com/0230am/picomemo-web/issues",
+  "sideEffects": false,
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./metadata": { "types": "./dist/metadata.d.ts", "import": "./dist/metadata.js" },
+    "./source-metadata.json": "./source-metadata.json"
+  },
+  "files": ["dist", "source-metadata.json", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "LICENSES"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-artifacts.mjs && node scripts/verify-artifacts.mjs dist",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/unit.test.mjs test/artifacts.test.mjs test/package.test.mjs",
+    "test:browser": "npm run build && vite build --config test/browser/vite.config.ts && node test/browser/run.mjs",
+    "test:cache": "node --test test/cache-integrity.test.mjs",
+    "test:determinism": "node scripts/test-deterministic-build.mjs",
+    "test:vectors": "node scripts/build-interop.mjs",
+    "test:interop": "node scripts/build-interop.mjs && node scripts/verify-interop.mjs",
+    "pack:check": "node scripts/check-pack.mjs"
+  },
+  "devDependencies": { "@types/node": "26.2.0", "typescript": "5.9.2", "vite": "8.2.1" },
+  "engines": { "node": ">=20" },
+  "publishConfig": { "access": "public", "tag": "experimental", "provenance": true }
+}
