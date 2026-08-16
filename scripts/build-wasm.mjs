@@ -14,7 +14,8 @@ const outputArgument = process.argv.find((argument) => argument.startsWith("--ou
 const output = path.resolve(root, outputArgument?.slice("--output=".length) ?? ".cache/generated");
 if (!output.startsWith(`${root}${path.sep}`)) throw new Error("WASM output must remain inside the repository.");
 
-await assertPinnedGit(source, lock.picomemo.commit, lock.picomemo.tree, "picomemo source");
+await assertPinnedGit(source, lock.picomemo.commit, lock.picomemo.tree, "picomemo source", lock.picomemo.patchSha256);
+await assertGeneratedNativeSources(source);
 await assertEmscripten(emsdk, lock.emscripten);
 await assertMbedTLS({ archive, directory: mbedtls, lock: lock.mbedtls });
 await mkdir(output, { recursive: true });
@@ -45,4 +46,21 @@ function run(command, args) {
     const result = spawnSync(command, args, { cwd: root, stdio: "inherit" });
     if (result.error) throw result.error;
     if (result.status !== 0) throw new Error(`${path.basename(command)} failed with exit code ${result.status}.`);
+}
+
+async function assertGeneratedNativeSources(directory) {
+    for (const extension of [".c", ".h"]) {
+        const canonical = (await readFile(path.join(directory, `omemo${extension}`), "utf8")).replaceAll("\r\n", "\n");
+        for (const version of ["omemo0", "omemo2"]) {
+            let expected = canonical.replace(/#if(n?)def OMEMO2\n([\s\S]*?)#endif\n/g, (_match, negative, body) => {
+                const marker = body.indexOf("#else");
+                const positive = marker < 0 ? body : body.slice(0, marker);
+                const fallback = marker < 0 ? "" : body.slice(marker + 5);
+                return (negative === "") === (version === "omemo2") ? positive : fallback;
+            });
+            expected = expected.replaceAll("omemo.h", `${version}.h`).replaceAll("OMEMO_", `${version.toUpperCase()}_`).replace(/omemo([A-Z])/g, `${version}$1`).replaceAll(`${version}Driver`, "omemoDriver");
+            const actual = (await readFile(path.join(directory, `gen/${version}${extension}`), "utf8")).replaceAll("\r\n", "\n");
+            if (actual !== expected) throw new Error(`Generated ${version}${extension} does not match canonical native source.`);
+        }
+    }
 }

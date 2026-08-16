@@ -76,7 +76,6 @@ let bobSessionState = decryptedKey.sessionState;
 const plaintext = await bob.decryptPayload(
   decryptedKey.key,
   encryptedPayload.payload,
-  encryptedPayload.iv,
 );
 console.log(decoder.decode(plaintext)); // "hello Bob"
 
@@ -169,25 +168,37 @@ Creates a lazy, dedicated-Worker backend. `options.protocol` is `"omemo2"` or `"
 | `replenishPreKeys(localState)` | Replacement local state containing replenished PreKeys. |
 | `buildOutgoingSession(localState, bundle)` | New session state for a remote bundle. |
 | `encryptKey(sessionState, key)` | Replacement session state, encrypted key message, and PreKey/key-exchange flag. |
-| `decryptKey(localState, sessionState, keyExchange, message, maximumMessageJump?)` | Replacement local/session states, authenticated remote identity key, and decrypted key material. |
+| `decryptKey(localState, sessionState, keyExchange, message, maximumMessageJump?, maximumRetainedSkippedKeys?)` | Replacement local/session states, authenticated remote identity key, and decrypted key material. |
 | `maintainSession(localState, sessionState)` | Replacement OMEMO 2 state, ratchet counters, and optional heartbeat transport. |
 | `encryptPayload(plaintext)` | Generated key, encrypted payload, and legacy IV when required. |
-| `decryptPayload(key, payload, iv?)` | Decrypted plaintext. |
+| `decryptPayload(key, payload)` | Decrypted OMEMO 2 plaintext. The IV is derived internally and is not part of the API or XML. |
+| `decryptPayload(key, payload, iv)` | Decrypted Legacy plaintext. Encrypt emits a 12-byte IV; decrypt accepts canonical 12-byte and receive-only historical 16-byte IVs. |
 | `onUnavailable(callback)` | Registers a callback for terminal Worker failure and returns an unsubscribe function. |
 | `terminate()` | Terminates the Worker and rejects pending operations. The backend cannot be reused. |
 
-The optional `maximumMessageJump` defaults to `PICOMEMO_MAXIMUM_MESSAGE_JUMP` (`128`) and bounds how many skipped message keys may be derived during a decrypt attempt.
+`maximumMessageJump` and `maximumRetainedSkippedKeys` are independent bounded controls. Both default to `2,000`; neither may exceed its exported hard maximum of `2,000`. The first bounds derivation work for one received message. The second bounds all skipped message keys retained by one session. Values above the hard maximum are rejected before the Worker starts or cryptographic work is performed.
+
+The 2,000-key default follows the classic libsignal forward-jump ceiling and remains a safety window for ordinary reordering, not an archive-processing strategy. At the maximum, a real legacy Worker/WASM regression produces a 136,339-byte v2 session envelope. The regression actually retains 20 full envelopes totaling 2,726,780 bytes and decrypts one retained old message in every session; the 20 replacement envelopes total 2,725,420 bytes. This is not represented as 20 simultaneous maximum forward jumps.
+
+The exported native probe reports a fixed 16 MiB initial WASM heap. Reviewed transient allocation payload is calculated in two feasible scenarios rather than presented as a live heap measurement: a maximum forward jump accounts for 457,608 bytes, comprising 8,044 copied input bytes, 153,540 bytes of fixed output capacities, a 136,024-byte native skipped-key structure, and up to 160,000 bytes for 2,000 journal-node payloads; replay from a full retained state accounts for 433,688 bytes, comprising 144,044 copied input bytes, the same output and skipped-key capacities, and one 80-byte journal-node payload. Both calculations explicitly exclude allocator overhead, native store/session/message and backup stack objects, JavaScript structured-clone and envelope buffers, and the fixed WASM heap itself. Exact repeated latency measurements are recorded by the browser regression rather than treated as a portable performance guarantee.
 
 The package also exports:
 
 - `PICOMEMO_BACKEND_VERSION`: locked native tag and commit identity.
-- `PICOMEMO_MAXIMUM_MESSAGE_JUMP`: maximum accepted skipped-message bound.
+- `PICOMEMO_DEFAULT_MESSAGE_JUMP` and `PICOMEMO_HARD_MAXIMUM_MESSAGE_JUMP`.
+- `PICOMEMO_DEFAULT_RETAINED_SKIPPED_KEYS` and `PICOMEMO_HARD_MAXIMUM_RETAINED_SKIPPED_KEYS`.
+- `PICOMEMO_MAXIMUM_SESSION_STATE_BYTES` and `PICOMEMO_SESSION_STATE_VERSION`.
+- `PICOMEMO_COMPATIBLE_BACKEND_VERSIONS` and `isPicomemoBackendVersionCompatible()` for ratchet-preserving storage compatibility checks.
 - `PICOMEMO_METADATA`: package version, exact native source commit/tree, features, and artifact hashes.
 - All public TypeScript interfaces used above.
 
 ## Worker lifecycle and errors
 
 The default factory always creates a module-type dedicated Worker. There is no main-thread cryptographic fallback. Requests and responses are bounded and validated at the Worker boundary.
+
+Native failures reject with `PicomemoError`. Its validated `category` is one of `jump-too-large`, `skipped-key-capacity`, `duplicate-or-old`, `authentication-failed`, `malformed-message`, or `backend-failure`. It also carries `protocol`, `operation`, and, for bounded ratchet failures only, a safe configured `limit` and non-secret counters. `requestedMessageJump` is the combined work requested by the message and `retainedSkippedKeys` is the pre-operation retained count at the failure boundary. Corrupt persisted local, session, or skipped-key state is conservatively classified as `backend-failure`, not as malformed ciphertext. The error never carries session state, key material, ciphertext, or plaintext. Worker errors and successes with unknown nested fields, mismatched request metadata, or invalid categories fail closed and terminate the Worker.
+
+Jump and skipped-key-capacity failures return no replacement state. All inputs remain immutable, so retrying the same ciphertext from the previously persisted state is transactional. Authentication, malformed-message, cancellation, and Worker failures likewise return no partially advanced state.
 
 An invalid argument rejects only that operation. A Worker crash, malformed Worker response, or explicit `terminate()` rejects all pending operations and permanently closes that backend instance. Create a new backend instance before retrying after terminal failure.
 
@@ -218,8 +229,9 @@ Add the directives needed by the rest of your application. Removing `'wasm-unsaf
 - Keep local and session state in storage appropriate for private cryptographic material.
 - Authenticate the remote `identityKey` returned by `decryptKey()` according to your application's trust policy.
 - Never reuse a stale state value after an operation returned its replacement.
+- Version 0.2.0 accepts the implicit-v1 session envelope emitted by 0.1.1 and deterministically emits v2 after the next successful session operation. The native ratchet and skipped-key entry bytes are not reinterpreted or replaced.
 - `protocol: "omemo2"` implements the OMEMO 2 path from picomemo; `protocol: "legacy"` implements the legacy OMEMO path.
-- The package is experimental and currently pins picomemo tag `1.2.1` plus commit `ff75cfc41b9ea8e27e4fe961c08dd2bd8b922317`.
+- The package is experimental and currently pins picomemo tag `1.2.1` plus commit `a4bad0297ea72ee75fbdb4afc899f65e8d85ae74`.
 
 ## Reproducibility
 

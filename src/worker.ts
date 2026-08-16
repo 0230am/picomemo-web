@@ -1,7 +1,8 @@
 /// <reference lib="webworker" />
 
 import createPicomemoModule from "./generated/picomemo.mjs";
-import type { PicomemoBundle, PicomemoProtocol, PicomemoWorkerRequest, PicomemoWorkerResponse, PicomemoWorkerSessionState } from "./types.js";
+import { PICOMEMO_HARD_MAXIMUM_MESSAGE_JUMP, PICOMEMO_HARD_MAXIMUM_RETAINED_SKIPPED_KEYS } from "./metadata.js";
+import type { PicomemoBundle, PicomemoErrorData, PicomemoProtocol, PicomemoWorkerRequest, PicomemoWorkerResponse, PicomemoWorkerSessionState } from "./types.js";
 
 const scope = self as DedicatedWorkerGlobalScope;
 
@@ -12,9 +13,13 @@ const modulePromise = createPicomemoModule({ locateFile: (file) => new URL(`./ge
 
 scope.onmessage = (event: MessageEvent<unknown>) => {
     const responseId = isRecord(event.data) && Number.isSafeInteger(event.data.id) && (event.data.id as number) >= 1 ? event.data.id as number : 0;
-    void Promise.resolve().then(() => validateRequest(event.data)).then(handle).then(
+    let request: PicomemoWorkerRequest | undefined;
+    void Promise.resolve().then(() => {
+        request = validateRequest(event.data);
+        return handle(request);
+    }).then(
         (value) => respond({ id: responseId, ok: true, value }),
-        (error: unknown) => respond({ id: responseId, ok: false, error: error instanceof Error ? error.message : String(error) }),
+        (error: unknown) => respond({ id: responseId, ok: false, error: errorData(error, request) }),
     );
 };
 
@@ -23,7 +28,7 @@ type Module = Awaited<ReturnType<typeof createPicomemoModule>>;
 async function handle(request: PicomemoWorkerRequest): Promise<unknown> {
     const module = await modulePromise;
     module._picomemoWebInitialize();
-    const protocol = request.operation === "fingerprint" ? "omemo2" : request.protocol;
+    const protocol = request.protocol;
 
     switch (request.operation) {
         case "setup": return setup(module, protocol);
@@ -32,10 +37,12 @@ async function handle(request: PicomemoWorkerRequest): Promise<unknown> {
         case "replenish": return replenish(module, protocol, request.store);
         case "initiate": return initiate(module, protocol, request.store, request.bundle);
         case "encrypt": return encrypt(module, protocol, request.state, request.key);
-        case "decrypt": return decrypt(module, protocol, request.store, request.state, request.maximumMessageJump, request.preKey, request.message);
+        case "decrypt": return decrypt(module, protocol, request.store, request.state, request.maximumMessageJump, request.maximumRetainedSkippedKeys, request.preKey, request.message);
         case "maintain": return maintain(module, protocol, request.store, request.state);
         case "encrypt-payload": return encryptPayload(module, protocol, request.plaintext);
-        case "decrypt-payload": return decryptPayload(module, protocol, request.key, request.iv, request.payload);
+        case "decrypt-payload": return request.protocol === "legacy"
+            ? decryptPayload(module, request.protocol, request.key, request.iv, request.payload)
+            : decryptPayload(module, request.protocol, request.key, undefined, request.payload);
     }
 }
 
@@ -44,30 +51,30 @@ function validateRequest(value: unknown): PicomemoWorkerRequest {
     const common = ["id", "operation"];
     const shapes: Record<string, readonly string[]> = {
         setup: [...common, "protocol"],
-        fingerprint: [...common, "identityKey"],
+        fingerprint: [...common, "protocol", "identityKey"],
         bundle: [...common, "protocol", "store"],
         replenish: [...common, "protocol", "store"],
         initiate: [...common, "protocol", "store", "bundle"],
         encrypt: [...common, "protocol", "state", "key"],
-        decrypt: [...common, "protocol", "store", "state", "maximumMessageJump", "preKey", "message"],
+        decrypt: [...common, "protocol", "store", "state", "maximumMessageJump", "maximumRetainedSkippedKeys", "preKey", "message"],
         maintain: [...common, "protocol", "store", "state"],
         "encrypt-payload": [...common, "protocol", "plaintext"],
-        "decrypt-payload": [...common, "protocol", "key", "payload", ...(value.iv === undefined ? [] : ["iv"])],
+        "decrypt-payload": [...common, "protocol", "key", "payload", ...(value.protocol === "legacy" ? ["iv"] : [])],
     };
     const expected = shapes[value.operation];
     if (!expected || Object.keys(value).length !== expected.length || Object.keys(value).some((key) => !expected.includes(key))) throw new TypeError("Invalid picomemo Worker request envelope.");
-    if (value.operation !== "fingerprint" && value.protocol !== "omemo2" && value.protocol !== "legacy") throw new TypeError("Invalid picomemo Worker protocol.");
+    if (value.protocol !== "omemo2" && value.protocol !== "legacy") throw new TypeError("Invalid picomemo Worker protocol.");
     switch (value.operation) {
         case "setup": break;
         case "fingerprint": if (!(value.identityKey instanceof Uint8Array)) throw new TypeError("Invalid picomemo Worker request envelope."); break;
         case "bundle":
         case "replenish": if (!(value.store instanceof Uint8Array)) throw new TypeError("Invalid picomemo Worker request envelope."); break;
-        case "initiate": if (!(value.store instanceof Uint8Array) || !isRecord(value.bundle)) throw new TypeError("Invalid picomemo Worker request envelope."); break;
-        case "encrypt": if (!isRecord(value.state) || !(value.key instanceof Uint8Array)) throw new TypeError("Invalid picomemo Worker request envelope."); break;
-        case "decrypt": if (!(value.store instanceof Uint8Array) || !isRecord(value.state) || !Number.isInteger(value.maximumMessageJump) || typeof value.preKey !== "boolean" || !(value.message instanceof Uint8Array)) throw new TypeError("Invalid picomemo Worker request envelope."); break;
-        case "maintain": if (!(value.store instanceof Uint8Array) || !isRecord(value.state)) throw new TypeError("Invalid picomemo Worker request envelope."); break;
+        case "initiate": if (!(value.store instanceof Uint8Array) || !validBundle(value.bundle)) throw new TypeError("Invalid picomemo Worker request envelope."); break;
+        case "encrypt": if (!validState(value.state) || !(value.key instanceof Uint8Array)) throw new TypeError("Invalid picomemo Worker request envelope."); break;
+        case "decrypt": if (!(value.store instanceof Uint8Array) || !validState(value.state) || !validLimit(value.maximumMessageJump, PICOMEMO_HARD_MAXIMUM_MESSAGE_JUMP) || !validLimit(value.maximumRetainedSkippedKeys, PICOMEMO_HARD_MAXIMUM_RETAINED_SKIPPED_KEYS) || typeof value.preKey !== "boolean" || !(value.message instanceof Uint8Array)) throw new TypeError("Invalid picomemo Worker request envelope."); break;
+        case "maintain": if (!(value.store instanceof Uint8Array) || !validState(value.state)) throw new TypeError("Invalid picomemo Worker request envelope."); break;
         case "encrypt-payload": if (!(value.plaintext instanceof Uint8Array)) throw new TypeError("Invalid picomemo Worker request envelope."); break;
-        case "decrypt-payload": if (!(value.key instanceof Uint8Array) || !(value.payload instanceof Uint8Array) || (value.iv !== undefined && !(value.iv instanceof Uint8Array))) throw new TypeError("Invalid picomemo Worker request envelope."); break;
+        case "decrypt-payload": if (!(value.key instanceof Uint8Array) || !(value.payload instanceof Uint8Array) || value.protocol === "legacy" && !(value.iv instanceof Uint8Array)) throw new TypeError("Invalid picomemo Worker request envelope."); break;
     }
     return value as unknown as PicomemoWorkerRequest;
 }
@@ -147,16 +154,18 @@ function encrypt(module: Module, protocol: PicomemoProtocol, state: PicomemoWork
     }));
 }
 
-function decrypt(module: Module, protocol: PicomemoProtocol, store: Uint8Array, state: PicomemoWorkerSessionState, maximumMessageJump: number, preKey: boolean, message: Uint8Array): { localState: Uint8Array; state: PicomemoWorkerSessionState; identityKey: Uint8Array; key: Uint8Array } {
+function decrypt(module: Module, protocol: PicomemoProtocol, store: Uint8Array, state: PicomemoWorkerSessionState, maximumMessageJump: number, maximumRetainedSkippedKeys: number, preKey: boolean, message: Uint8Array): { localState: Uint8Array; state: PicomemoWorkerSessionState; identityKey: Uint8Array; key: Uint8Array } {
     bounded(store, 16384, "store");
     boundedState(state);
     bounded(message, 512, "encrypted key message");
-    if (!Number.isInteger(maximumMessageJump) || maximumMessageJump < 0 || maximumMessageJump > 128) throw new RangeError("Invalid maximum message jump.");
+    if (!validLimit(maximumMessageJump, PICOMEMO_HARD_MAXIMUM_MESSAGE_JUMP)) throw new RangeError("Invalid maximum message jump.");
+    if (!validLimit(maximumRetainedSkippedKeys, PICOMEMO_HARD_MAXIMUM_RETAINED_SKIPPED_KEYS)) throw new RangeError("Invalid maximum retained skipped keys.");
+    const skippedCapacity = 4 + maximumRetainedSkippedKeys * 68;
 
-    return withBytes(module, [store, state.session, state.skippedKeys, message], ([storePointer, session, skipped, messagePointer]) => withAllocations(module, [16384, 1024, 9000, 64, 16, 32], ([storeOut, sessionOut, skippedOut, keyOut, metadata, identity]) => {
-        checked(protocol === "legacy"
-            ? module._picomemoWeb0DecryptKey(storePointer, store.length, session, state.session.length, skipped, state.skippedKeys.length, maximumMessageJump, Number(preKey), messagePointer, message.length, storeOut, 16384, sessionOut, 1024, skippedOut, 9000, keyOut, 64, metadata)
-            : module._picomemoWebDecryptKey(storePointer, store.length, session, state.session.length, skipped, state.skippedKeys.length, maximumMessageJump, Number(preKey), messagePointer, message.length, storeOut, 16384, sessionOut, 1024, skippedOut, 9000, keyOut, 64, metadata), "decrypt key");
+    return withBytes(module, [store, state.session, state.skippedKeys, message], ([storePointer, session, skipped, messagePointer]) => withAllocations(module, [16384, 1024, skippedCapacity, 64, 32, 32], ([storeOut, sessionOut, skippedOut, keyOut, metadata, identity]) => {
+        checkedDecrypt(protocol === "legacy"
+            ? module._picomemoWeb0DecryptKey(storePointer, store.length, session, state.session.length, skipped, state.skippedKeys.length, maximumMessageJump, maximumRetainedSkippedKeys, Number(preKey), messagePointer, message.length, storeOut, 16384, sessionOut, 1024, skippedOut, skippedCapacity, keyOut, 64, metadata)
+            : module._picomemoWebDecryptKey(storePointer, store.length, session, state.session.length, skipped, state.skippedKeys.length, maximumMessageJump, maximumRetainedSkippedKeys, Number(preKey), messagePointer, message.length, storeOut, 16384, sessionOut, 1024, skippedOut, skippedCapacity, keyOut, 64, metadata), protocol, module, metadata);
         const offset = metadata >>> 2;
         checked(protocol === "legacy"
             ? module._picomemoWeb0GetSessionIdentity(sessionOut, module.HEAPU32[offset + 1], identity)
@@ -206,7 +215,8 @@ function decryptPayload(module: Module, protocol: PicomemoProtocol, key: Uint8Ar
     if (protocol === "legacy") {
         exact(key, 32, "payload key");
         if (!(iv instanceof Uint8Array)) throw new RangeError("Invalid payload IV.");
-        exact(iv, 12, "payload IV");
+        bounded(iv, 16, "payload IV");
+        if (iv.length !== 12 && iv.length !== 16) throw new RangeError("Invalid payload IV.");
         if (payload.length < 1 || payload.length > 1024 * 1024) throw new RangeError("Invalid encrypted payload.");
         return withBytes(module, [key, iv, payload], ([keyPointer, ivPointer, payloadPointer]) => withAllocations(module, [payload.length], ([plaintext]) => copy(module, plaintext, checked(module._picomemoWeb0DecryptMessage(keyPointer, key.length, ivPointer, iv.length, payloadPointer, payload.length, plaintext, payload.length), "decrypt payload"))));
     }
@@ -220,13 +230,32 @@ function checked(result: number, operation: string): number {
     return result;
 }
 
+function checkedDecrypt(result: number, protocol: PicomemoProtocol, module: Module, metadata: number): number {
+    if (result >= 0) return result;
+    const offset = metadata >>> 2;
+    const requestedMessageJump = module.HEAPU32[offset + 4];
+    const retainedSkippedKeys = module.HEAPU32[offset + 5];
+    const maximumMessageJump = module.HEAPU32[offset + 6];
+    const maximumRetainedSkippedKeys = module.HEAPU32[offset + 7];
+    if (result === -103) throw new WorkerPicomemoError({ category: "jump-too-large", protocol, operation: "decrypt", limit: { kind: "message-jump", configured: maximumMessageJump }, counters: { requestedMessageJump, retainedSkippedKeys } });
+    if (result === -104) throw new WorkerPicomemoError({ category: "skipped-key-capacity", protocol, operation: "decrypt", limit: { kind: "retained-skipped-keys", configured: maximumRetainedSkippedKeys }, counters: { requestedMessageJump, retainedSkippedKeys } });
+    if (result === -6) throw new WorkerPicomemoError({ category: "duplicate-or-old", protocol, operation: "decrypt" });
+    if (result === -10) throw new WorkerPicomemoError({ category: "authentication-failed", protocol, operation: "decrypt" });
+    if (result === -1 || result === -3 || result === -4) throw new WorkerPicomemoError({ category: "malformed-message", protocol, operation: "decrypt" });
+    throw new WorkerPicomemoError({ category: "backend-failure", protocol, operation: "decrypt" });
+}
+
 function copy(module: Module, pointer: number, length: number): Uint8Array {
     return module.HEAPU8.slice(pointer, pointer + length);
 }
 
 function boundedState(state: PicomemoWorkerSessionState): void {
+    if (!isRecord(state) || !hasExactKeys(state, ["session", "skippedKeys"])) throw new RangeError("Invalid session state.");
     bounded(state.session, 1024, "session");
-    bounded(state.skippedKeys, 9000, "skipped-key state");
+    bounded(state.skippedKeys, 4 + PICOMEMO_HARD_MAXIMUM_RETAINED_SKIPPED_KEYS * 68, "skipped-key state");
+    if (state.skippedKeys.length < 4) throw new RangeError("Invalid skipped-key state.");
+    const count = new DataView(state.skippedKeys.buffer, state.skippedKeys.byteOffset, state.skippedKeys.byteLength).getUint32(0, true);
+    if (count > PICOMEMO_HARD_MAXIMUM_RETAINED_SKIPPED_KEYS || state.skippedKeys.length !== 4 + count * 68) throw new RangeError("Invalid skipped-key state.");
 }
 
 function bounded(value: Uint8Array, maximum: number, name: string): void {
@@ -277,6 +306,32 @@ function withAllocations<T>(module: Module, sizes: readonly number[], callback: 
 
 function respond(response: PicomemoWorkerResponse): void {
     scope.postMessage(response);
+}
+
+class WorkerPicomemoError extends Error {
+    constructor(readonly data: PicomemoErrorData) { super(data.category); }
+}
+
+function errorData(error: unknown, request: PicomemoWorkerRequest | undefined): PicomemoErrorData {
+    if (error instanceof WorkerPicomemoError) return error.data;
+    return { category: "backend-failure", protocol: request?.protocol ?? "unknown", operation: request?.operation ?? "worker-request" };
+}
+
+function validState(value: unknown): value is PicomemoWorkerSessionState {
+    return isRecord(value) && hasExactKeys(value, ["session", "skippedKeys"]) && value.session instanceof Uint8Array && value.skippedKeys instanceof Uint8Array;
+}
+
+function validBundle(value: unknown): value is PicomemoBundle {
+    return isRecord(value) && hasExactKeys(value, ["identityKey", "signedPreKey", "signedPreKeySignature", "signedPreKeyId", "preKeys"]) && Array.isArray(value.preKeys) && value.preKeys.every((preKey) => isRecord(preKey) && hasExactKeys(preKey, ["id", "publicKey"]));
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+    const keys = Object.keys(value);
+    return keys.length === expected.length && keys.every((key) => expected.includes(key));
+}
+
+function validLimit(value: unknown, maximum: number): boolean {
+    return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= maximum;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

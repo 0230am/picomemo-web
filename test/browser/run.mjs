@@ -11,12 +11,46 @@ const dist = path.resolve("test/browser/dist");
 const allowed = await runBrowser("default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; style-src 'none'; img-src 'none'");
 if (!allowed.includes("<title>PASS</title>")) throw new Error(`Worker/WASM browser test failed.\n${allowed}`);
 if (!allowed.includes("omemo2 bidirectional Worker/WASM round trip") || !allowed.includes("legacy bidirectional Worker/WASM round trip")) throw new Error("Both protocol Worker/WASM regressions did not run.");
+const maximumMeasurement = allowed.match(/"detail": "(\{\\"serializedBytes\\"[^\n]+\})"/);
+if (!maximumMeasurement) throw new Error("Maximum-window measurements were not reported.");
+const measurement = JSON.parse(maximumMeasurement[1].replaceAll('\\"', '"'));
+validateMeasurement(measurement);
+const readme = await readFile(path.resolve("README.md"), "utf8");
+for (const statement of ["136,339-byte v2 session envelope", "2,726,780 bytes", "2,725,420 bytes", "fixed 16 MiB initial WASM heap", "maximum forward jump accounts for 457,608 bytes", "full retained state accounts for 433,688 bytes"]) if (!readme.includes(statement)) throw new Error(`README measurement is missing: ${statement}.`);
 
 const blocked = await runBrowser("default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'none'; img-src 'none'");
 if (!blocked.includes("<title>FAIL</title>")) throw new Error("CSP without wasm-unsafe-eval unexpectedly allowed the WASM backend.");
-if (!/wasm|webassembly/i.test(blocked) || blocked.includes("bidirectional Worker/WASM round trip\",\"ok\":true")) throw new Error("CSP negative test did not specifically prove WASM rejection without fallback.");
+if (!/backend operation failed|backend-failure/i.test(blocked) || blocked.includes("bidirectional Worker/WASM round trip\",\"ok\":true")) throw new Error("CSP negative test did not prove the Worker backend failed closed without fallback.");
 
-console.log("Browser Worker/WASM tests passed; CSP fails closed without 'wasm-unsafe-eval'.");
+console.log(`Browser Worker/WASM tests passed; CSP fails closed without 'wasm-unsafe-eval'.\nMaximum-window measurement: ${JSON.stringify(measurement)}`);
+
+function validateMeasurement(value) {
+	const keys = ["serializedBytes", "nativeSessionBytes", "localStateBytes", "wasmInitialHeapBytes", "twentySessions", "twentyRetainedSerializedBytes", "twentyOperatedSerializedBytes", "reviewedTransientAllocation", "maximumJumpLatencyMs", "configuredJump", "configuredRetained"];
+	if (!isExactRecord(value, keys)) throw new Error("Maximum-window measurement fields changed.");
+	for (const key of ["serializedBytes", "nativeSessionBytes", "localStateBytes", "twentyRetainedSerializedBytes", "twentyOperatedSerializedBytes"]) if (!Number.isSafeInteger(value[key]) || value[key] < 1) throw new Error(`Invalid maximum-window ${key}.`);
+	if (value.serializedBytes !== 136339 || value.wasmInitialHeapBytes !== 16 * 1024 * 1024 || value.twentySessions !== 20 || value.twentyRetainedSerializedBytes !== 2726780 || value.twentyRetainedSerializedBytes !== value.serializedBytes * value.twentySessions || value.twentyOperatedSerializedBytes !== 2725420 || value.configuredJump !== 2000 || value.configuredRetained !== 2000) throw new Error("Maximum-window fixed measurements changed.");
+	const allocationKeys = ["kind", "exclusions", "maximumForwardJump", "fullRetainedReplay"];
+	if (!isExactRecord(value.reviewedTransientAllocation, allocationKeys) || value.reviewedTransientAllocation.kind !== "accounted-payload-calculation-not-live-heap-measurement" || value.reviewedTransientAllocation.exclusions !== "allocator-overhead+native-store-session-message-backup-stack+js-clone-and-envelope") throw new Error("Invalid transient-allocation calculation.");
+	validateAllocationScenario(value.reviewedTransientAllocation.maximumForwardJump, 2000 * 80);
+	validateAllocationScenario(value.reviewedTransientAllocation.fullRetainedReplay, 80);
+	if (value.reviewedTransientAllocation.maximumForwardJump.accountedPayloadBytes !== 457608 || value.reviewedTransientAllocation.fullRetainedReplay.accountedPayloadBytes !== 433688) throw new Error("Reviewed allocation payload measurements changed.");
+	if (!isExactRecord(value.maximumJumpLatencyMs, ["minimum", "median", "p95", "samples"]) || value.maximumJumpLatencyMs.samples !== 7) throw new Error("Invalid latency measurements.");
+	for (const key of ["minimum", "median", "p95"]) if (typeof value.maximumJumpLatencyMs[key] !== "number" || value.maximumJumpLatencyMs[key] < 0) throw new Error(`Invalid latency ${key}.`);
+}
+
+function validateAllocationScenario(value, expectedJournalBytes) {
+	const keys = ["copiedInputBytes", "fixedOutputCapacityBytes", "nativeSkippedStateBytes", "transactionJournalPayloadBytes", "accountedPayloadBytes"];
+	if (!isExactRecord(value, keys)) throw new Error("Transient-allocation scenario fields changed.");
+	for (const key of keys) if (!Number.isSafeInteger(value[key]) || value[key] < 1) throw new Error(`Invalid transient-allocation ${key}.`);
+	const calculated = value.copiedInputBytes + value.fixedOutputCapacityBytes + value.nativeSkippedStateBytes + value.transactionJournalPayloadBytes;
+	if (value.accountedPayloadBytes !== calculated || value.transactionJournalPayloadBytes !== expectedJournalBytes) throw new Error("Transient-allocation scenario is inconsistent.");
+}
+
+function isExactRecord(value, expected) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const keys = Object.keys(value);
+	return keys.length === expected.length && keys.every((key) => expected.includes(key));
+}
 
 async function runBrowser(csp) {
 	const server = createServer(async (request, response) => {
@@ -119,7 +153,7 @@ async function inspect(port) {
 	await openSocket(socket);
 
 	try {
-		for (let attempt = 0; attempt < 300; attempt++) {
+		for (let attempt = 0; attempt < 1800; attempt++) {
 			let title;
 			try {
 				title = await evaluate(socket, attempt + 1, "document.title");

@@ -3,8 +3,9 @@
     "repository": "https://github.com/0230am/picomemo.git",
     "tag": "1.2.1",
     "baseCommit": "616b7014ea293a1fd5f785b2535db5bdaa0acfdf",
-    "commit": "ff75cfc41b9ea8e27e4fe961c08dd2bd8b922317",
-    "tree": "81f38825f67a4d3819f823be9e2821624047ba96"
+    "commit": "a4bad0297ea72ee75fbdb4afc899f65e8d85ae74",
+    "tree": "011b0bd1a0f4109856f7dfb633383efbe313cd3e",
+    "dirty": false
   },
   "emscripten": {
     "repository": "https://github.com/emscripten-core/emsdk.git",
@@ -22,10 +23,10 @@
   },
   "pythonInterop": { "python": "3.14.5", "pip": "25.3", "omemo": "2.1.0", "twomemo": "2.1.0" },
   "productionArtifact": {
-    "backendVersion": "1.2.1+ff75cfc41b9ea8e27e4fe961c08dd2bd8b922317",
+    "backendVersion": "1.2.1+a4bad0297ea72ee75fbdb4afc899f65e8d85ae74",
     "featureSet": "omemo0+omemo2",
-    "declarationSha256": "b094afe261c8f07f9314ef81b0af7fba14da6b60707db0e58e0e2518986d01e2",
-    "loaderSha256": "4cf18ad8f190f48bff989e3b9769984fc6dab85595e2b853cbcbd25cc0407095",
-    "wasmSha256": "8cf0ddc7ec45849bd99ffa1c405e8a6aa9c26384b76f5afc9b5bd95d5c7e0e94"
+    "declarationSha256": "cf2cf53c64ecec5b7a828cec061e11c7e6e61b1275cda9a278fe3b5bd2c9cabe",
+    "loaderSha256": "3c54df4326d828425e5568c1986a460f824d0d2259f3d3511a0c7e589ebcf653",
+    "wasmSha256": "c0dd1f11af4984216282ce6ea609e074738e88b64f1ab424004792303a847713"
   }
 }

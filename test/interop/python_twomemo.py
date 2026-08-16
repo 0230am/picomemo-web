@@ -66,6 +66,9 @@ async def main() -> None:
         cause = error.__cause__
         if not isinstance(cause, AuthenticationFailedException) or str(cause) != "Authentication tags do not match.":
             raise
+        if diagnose_reversed_ad:
+            print("EXPECTED REJECTION: reversed identity associated data did not authenticate.")
+            return
         print(f"INTEROPERABILITY FAILURE: {type(error).__module__}.{type(error).__name__}: {error}")
         while cause is not None:
             print(f"CAUSED BY: {type(cause).__module__}.{type(cause).__name__}: {cause}")
@@ -74,9 +77,8 @@ async def main() -> None:
     assert decrypted.key == b"\xcc" * 32
     assert decrypted.auth_tag == b"\xcc" * 16
     if diagnose_reversed_ad:
-        print("DIAGNOSIS CONFIRMED: reversing only the fixed identity associated data authenticates picomemo's response.")
-        return
-    raise AssertionError("Unexpected interoperability success; re-review the rejected ADR before changing this sentinel.")
+        raise AssertionError("Reversed identity associated data unexpectedly authenticated.")
+    print("Bidirectional python-twomemo OMEMO 2 interoperability succeeded.")
 
 
 asyncio.run(main())

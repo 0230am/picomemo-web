@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { assertMbedTLS, assertPinnedGit, hashJSON, hashMbedTLSInputs, MBEDTLS_BUILD_CONFIGURATION, sha256 } from "../scripts/cache-integrity.mjs";
+import { assertMbedTLS, assertPinnedGit, gitPatchSha256, hashJSON, hashMbedTLSInputs, MBEDTLS_BUILD_CONFIGURATION, sha256 } from "../scripts/cache-integrity.mjs";
 
 test("rejects commit, tree, tracked, and untracked source mutations", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "picomemo-web-cache-"));
@@ -20,6 +20,13 @@ test("rejects commit, tree, tracked, and untracked source mutations", async () =
         await assert.rejects(assertPinnedGit(directory, commit, "0".repeat(40), "test source"), /locked tree/);
         await writeFile(path.join(directory, "untracked.txt"), "mutation\n");
         await assert.rejects(assertPinnedGit(directory, commit, tree, "test source"), /dirty/);
+        await rm(path.join(directory, "untracked.txt"));
+        await writeFile(path.join(directory, "source.txt"), "reviewed patch\n");
+        const patchSha256 = gitPatchSha256(directory);
+        await assertPinnedGit(directory, commit, tree, "test source", patchSha256);
+        await assert.rejects(assertPinnedGit(directory, commit, tree, "test source", "0".repeat(64)), /patch/);
+        await writeFile(path.join(directory, "untracked.txt"), "mutation\n");
+        await assert.rejects(assertPinnedGit(directory, commit, tree, "test source", patchSha256), /untracked/);
     } finally {
         await rm(directory, { recursive: true, force: true });
     }

@@ -7,16 +7,23 @@
 #include "omemo0.h"
 #include "omemo2.h"
 
-#define PICOMEMO_WEB_MAX_SKIPPED_KEYS 128
+#define PICOMEMO_WEB_MAX_SKIPPED_KEYS 2000
 #define PICOMEMO_WEB_SKIPPED_ENTRY_SIZE (4 + 32 + 32)
 #define PICOMEMO_WEB_ECAPACITY (-100)
 #define PICOMEMO_WEB_EWORKER (-101)
 #define PICOMEMO_WEB_ENOMEM (-102)
+#define PICOMEMO_WEB_EJUMP (-103)
+#define PICOMEMO_WEB_ESKIPPED_CAPACITY (-104)
+#define PICOMEMO_WEB_EPERSISTED_STATE (-105)
 
 struct PicomemoWebSkippedState {
   struct omemo2MessageKey keys[PICOMEMO_WEB_MAX_SKIPPED_KEYS];
   uint32_t count;
   uint32_t max_jump;
+  uint32_t max_retained;
+  uint32_t requested_jump;
+  uint32_t failure_retained;
+  int failure;
 };
 
 static struct PicomemoWebSkippedState *active_skipped;
@@ -25,6 +32,10 @@ struct PicomemoWeb0SkippedState {
   struct omemo0MessageKey keys[PICOMEMO_WEB_MAX_SKIPPED_KEYS];
   uint32_t count;
   uint32_t max_jump;
+  uint32_t max_retained;
+  uint32_t requested_jump;
+  uint32_t failure_retained;
+  int failure;
 };
 
 static struct PicomemoWeb0SkippedState *active0_skipped;
@@ -64,10 +75,21 @@ static int picomemoWebStoreMessageKey(struct omemo2Session *session,
                                  const struct omemo2MessageKey *key,
                                  uint64_t fullamount) {
   (void)session;
-  if (!active_skipped || fullamount > active_skipped->max_jump)
+  if (!active_skipped)
     return OMEMO2_EUSER;
-  if (active_skipped->count >= PICOMEMO_WEB_MAX_SKIPPED_KEYS)
+  if (fullamount > active_skipped->max_jump) {
+    active_skipped->requested_jump = fullamount > UINT32_MAX ? UINT32_MAX : (uint32_t)fullamount;
+    active_skipped->failure_retained = active_skipped->count;
+    active_skipped->failure = PICOMEMO_WEB_EJUMP;
     return OMEMO2_EUSER;
+  }
+  if (active_skipped->count > active_skipped->max_retained ||
+      fullamount > active_skipped->max_retained - active_skipped->count) {
+    active_skipped->requested_jump = fullamount > UINT32_MAX ? UINT32_MAX : (uint32_t)fullamount;
+    active_skipped->failure_retained = active_skipped->count;
+    active_skipped->failure = PICOMEMO_WEB_ESKIPPED_CAPACITY;
+    return OMEMO2_EUSER;
+  }
   active_skipped->keys[active_skipped->count++] = *key;
   return 0;
 }
@@ -92,10 +114,21 @@ static int picomemoWeb0StoreMessageKey(struct omemo0Session *session,
                                   const struct omemo0MessageKey *key,
                                   uint64_t fullamount) {
   (void)session;
-  if (!active0_skipped || fullamount > active0_skipped->max_jump)
+  if (!active0_skipped)
     return OMEMO0_EUSER;
-  if (active0_skipped->count >= PICOMEMO_WEB_MAX_SKIPPED_KEYS)
+  if (fullamount > active0_skipped->max_jump) {
+    active0_skipped->requested_jump = fullamount > UINT32_MAX ? UINT32_MAX : (uint32_t)fullamount;
+    active0_skipped->failure_retained = active0_skipped->count;
+    active0_skipped->failure = PICOMEMO_WEB_EJUMP;
     return OMEMO0_EUSER;
+  }
+  if (active0_skipped->count > active0_skipped->max_retained ||
+      fullamount > active0_skipped->max_retained - active0_skipped->count) {
+    active0_skipped->requested_jump = fullamount > UINT32_MAX ? UINT32_MAX : (uint32_t)fullamount;
+    active0_skipped->failure_retained = active0_skipped->count;
+    active0_skipped->failure = PICOMEMO_WEB_ESKIPPED_CAPACITY;
+    return OMEMO0_EUSER;
+  }
   active0_skipped->keys[active0_skipped->count++] = *key;
   return 0;
 }
@@ -157,17 +190,23 @@ static int writeSession0(const struct omemo0Session *session, uint8_t *out,
 }
 
 static int readSkipped(const uint8_t *p, size_t n, uint32_t max_jump,
+                       uint32_t max_retained,
                        struct PicomemoWebSkippedState *state) {
   memset(state, 0, sizeof(*state));
   state->max_jump = max_jump;
+  state->max_retained = max_retained;
+  if (max_jump > PICOMEMO_WEB_MAX_SKIPPED_KEYS ||
+      max_retained > PICOMEMO_WEB_MAX_SKIPPED_KEYS)
+    return OMEMO2_EPARAM;
   if (!n) return 0;
   if (n < 4) return OMEMO2_EPROTOBUF;
   uint32_t count = (uint32_t)p[0] | (uint32_t)p[1] << 8 |
                    (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
   if (count > PICOMEMO_WEB_MAX_SKIPPED_KEYS || n != 4 + count * PICOMEMO_WEB_SKIPPED_ENTRY_SIZE)
     return OMEMO2_EPROTOBUF;
-  p += 4;
   state->count = count;
+  if (count > max_retained) return PICOMEMO_WEB_ESKIPPED_CAPACITY;
+  p += 4;
   for (uint32_t i = 0; i < count; i++) {
     state->keys[i].nr = (uint32_t)p[0] | (uint32_t)p[1] << 8 |
                         (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
@@ -201,17 +240,23 @@ static int writeSkipped(const struct PicomemoWebSkippedState *state, uint8_t *ou
 }
 
 static int readSkipped0(const uint8_t *p, size_t n, uint32_t max_jump,
+                        uint32_t max_retained,
                         struct PicomemoWeb0SkippedState *state) {
   memset(state, 0, sizeof(*state));
   state->max_jump = max_jump;
+  state->max_retained = max_retained;
+  if (max_jump > PICOMEMO_WEB_MAX_SKIPPED_KEYS ||
+      max_retained > PICOMEMO_WEB_MAX_SKIPPED_KEYS)
+    return OMEMO0_EPARAM;
   if (!n) return 0;
   if (n < 4) return OMEMO0_EPROTOBUF;
   uint32_t count = (uint32_t)p[0] | (uint32_t)p[1] << 8 |
                    (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
   if (count > PICOMEMO_WEB_MAX_SKIPPED_KEYS || n != 4 + count * PICOMEMO_WEB_SKIPPED_ENTRY_SIZE)
     return OMEMO0_EPROTOBUF;
-  p += 4;
   state->count = count;
+  if (count > max_retained) return PICOMEMO_WEB_ESKIPPED_CAPACITY;
+  p += 4;
   for (uint32_t i = 0; i < count; i++) {
     state->keys[i].nr = (uint32_t)p[0] | (uint32_t)p[1] << 8 |
                         (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
@@ -376,6 +421,7 @@ EMSCRIPTEN_KEEPALIVE int picomemoWebDecryptKey(
     const uint8_t *store_bytes, size_t store_n,
     const uint8_t *session_bytes, size_t session_n,
     const uint8_t *skipped_bytes, size_t skipped_n, uint32_t max_jump,
+    uint32_t max_retained,
     int is_prekey, const uint8_t *message, size_t message_n,
     uint8_t *store_out, size_t store_capacity,
     uint8_t *session_out, size_t session_capacity,
@@ -384,16 +430,30 @@ EMSCRIPTEN_KEEPALIVE int picomemoWebDecryptKey(
   struct omemo2Store store;
   struct omemo2Session session;
   struct PicomemoWebSkippedState skipped;
+  memset(&skipped, 0, sizeof(skipped));
+  memset(metadata, 0, 8 * sizeof(*metadata));
   size_t key_n = key_capacity;
   int result = readStore(store_bytes, store_n, &store);
-  if (!result) result = readSession(session_bytes, session_n, &session);
-  if (!result) result = readSkipped(skipped_bytes, skipped_n, max_jump, &skipped);
+  if (result) result = PICOMEMO_WEB_EPERSISTED_STATE;
+  if (!result && readSession(session_bytes, session_n, &session))
+    result = PICOMEMO_WEB_EPERSISTED_STATE;
+  if (!result) {
+    result = readSkipped(skipped_bytes, skipped_n, max_jump,
+                         max_retained, &skipped);
+    if (result && result != PICOMEMO_WEB_ESKIPPED_CAPACITY)
+      result = PICOMEMO_WEB_EPERSISTED_STATE;
+  }
   if (!result) {
     active_skipped = &skipped;
     result = omemo2DecryptKey(&session, &store, key_out, &key_n,
                               is_prekey, message, message_n);
     active_skipped = NULL;
   }
+  if (result == OMEMO2_EUSER && skipped.failure) result = skipped.failure;
+  metadata[4] = skipped.requested_jump;
+  metadata[5] = skipped.failure ? skipped.failure_retained : skipped.count;
+  metadata[6] = max_jump;
+  metadata[7] = max_retained;
   if (!result && is_prekey && session.usedpk_id) {
     for (int i = 0; i < OMEMO2_NUMPREKEYS; i++) {
       if (store.prekeys[i].id != session.usedpk_id) continue;
@@ -557,6 +617,7 @@ EMSCRIPTEN_KEEPALIVE int picomemoWeb0DecryptKey(
     const uint8_t *store_bytes, size_t store_n,
     const uint8_t *session_bytes, size_t session_n,
     const uint8_t *skipped_bytes, size_t skipped_n, uint32_t max_jump,
+    uint32_t max_retained,
     int is_prekey, const uint8_t *message, size_t message_n,
     uint8_t *store_out, size_t store_capacity,
     uint8_t *session_out, size_t session_capacity,
@@ -565,16 +626,30 @@ EMSCRIPTEN_KEEPALIVE int picomemoWeb0DecryptKey(
   struct omemo0Store store;
   struct omemo0Session session;
   struct PicomemoWeb0SkippedState skipped;
+  memset(&skipped, 0, sizeof(skipped));
+  memset(metadata, 0, 8 * sizeof(*metadata));
   size_t key_n = key_capacity;
   int result = readStore0(store_bytes, store_n, &store);
-  if (!result) result = readSession0(session_bytes, session_n, &session);
-  if (!result) result = readSkipped0(skipped_bytes, skipped_n, max_jump, &skipped);
+  if (result) result = PICOMEMO_WEB_EPERSISTED_STATE;
+  if (!result && readSession0(session_bytes, session_n, &session))
+    result = PICOMEMO_WEB_EPERSISTED_STATE;
+  if (!result) {
+    result = readSkipped0(skipped_bytes, skipped_n, max_jump,
+                          max_retained, &skipped);
+    if (result && result != PICOMEMO_WEB_ESKIPPED_CAPACITY)
+      result = PICOMEMO_WEB_EPERSISTED_STATE;
+  }
   if (!result) {
     active0_skipped = &skipped;
     result = omemo0DecryptKey(&session, &store, key_out, &key_n,
                               is_prekey, message, message_n);
     active0_skipped = NULL;
   }
+  if (result == OMEMO0_EUSER && skipped.failure) result = skipped.failure;
+  metadata[4] = skipped.requested_jump;
+  metadata[5] = skipped.failure ? skipped.failure_retained : skipped.count;
+  metadata[6] = max_jump;
+  metadata[7] = max_retained;
   if (!result && is_prekey && session.usedpk_id) {
     for (int i = 0; i < OMEMO0_NUMPREKEYS; i++) {
       if (store.prekeys[i].id != session.usedpk_id) continue;
@@ -615,8 +690,9 @@ EMSCRIPTEN_KEEPALIVE int picomemoWeb0DecryptMessage(
     const uint8_t *payload, size_t payload_n, uint8_t *plaintext,
     size_t plaintext_capacity) {
   if (payload_n > plaintext_capacity) return PICOMEMO_WEB_ECAPACITY;
-  if (iv_n != 12) return OMEMO0_EPARAM;
-  int result = omemo0DecryptMessage(plaintext, key, key_n, iv, payload, payload_n);
+  if (iv_n != 12 && iv_n != 16) return OMEMO0_EPARAM;
+  int result = omemo0DecryptMessageWithIVLength(
+      plaintext, key, key_n, iv, iv_n, payload, payload_n);
   return result ? result : (int)payload_n;
 }
 

@@ -11,13 +11,15 @@ export const MBEDTLS_BUILD_CONFIGURATION = Object.freeze({
     environmentOverrides: {},
 });
 
-export async function assertPinnedGit(directory, expectedCommit, expectedTree, name) {
+export async function assertPinnedGit(directory, expectedCommit, expectedTree, name, expectedPatchSha256) {
     const head = git(directory, ["rev-parse", "HEAD"]);
     if (head !== expectedCommit) throw new Error(`${name} is not at locked commit ${expectedCommit}.`);
     const tree = git(directory, ["rev-parse", "HEAD^{tree}"]);
     if (expectedTree && tree !== expectedTree) throw new Error(`${name} does not have locked tree ${expectedTree}.`);
     const status = git(directory, ["status", "--porcelain=v1", "--untracked-files=all"]);
-    if (status !== "") throw new Error(`${name} worktree is dirty:\n${status}`);
+    if (!expectedPatchSha256 && status !== "") throw new Error(`${name} worktree is dirty:\n${status}`);
+    if (expectedPatchSha256 && status.split(/\r?\n/).some((line) => line.startsWith("??"))) throw new Error(`${name} worktree has untracked files:\n${status}`);
+    if (expectedPatchSha256 && gitPatchSha256(directory) !== expectedPatchSha256) throw new Error(`${name} worktree patch does not match its lock.`);
 }
 
 export async function assertEmscripten(directory, lock) {
@@ -49,6 +51,7 @@ export async function hashMbedTLSInputs(directory) {
 
 export function hashJSON(value) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 export async function sha256(file) { return createHash("sha256").update(await readFile(file)).digest("hex"); }
+export function gitPatchSha256(directory) { return createHash("sha256").update(gitBytes(directory, ["diff", "--binary", "--no-ext-diff", "HEAD", "--", "."])).digest("hex"); }
 
 async function collectFiles(directory) {
     const files = [];
@@ -77,4 +80,10 @@ function git(directory, args) {
     const result = spawnSync("git", ["-c", `safe.directory=${directory}`, "-C", directory, ...args], { encoding: "utf8" });
     if (result.status !== 0) throw new Error(`Could not verify ${directory}: ${result.stderr.trim()}`);
     return result.stdout.trim();
+}
+
+function gitBytes(directory, args) {
+    const result = spawnSync("git", ["-c", `safe.directory=${directory}`, "-C", directory, ...args], { encoding: null });
+    if (result.status !== 0) throw new Error(`Could not verify ${directory}: ${result.stderr.toString().trim()}`);
+    return result.stdout;
 }
