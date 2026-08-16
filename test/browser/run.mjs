@@ -84,6 +84,7 @@ async function runBrowser(csp) {
 		primaryError = error;
 	} finally {
 		try {
+			server.closeAllConnections();
 			await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 			await removeProfile(profile);
 		} catch (error) {

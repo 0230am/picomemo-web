@@ -3,8 +3,8 @@ import test from "node:test";
 import { createPicomemoBackend, isPicomemoBackendVersionCompatible, PicomemoError, PICOMEMO_BACKEND_VERSION, PICOMEMO_COMPATIBLE_BACKEND_VERSIONS, PICOMEMO_DEFAULT_MESSAGE_JUMP, PICOMEMO_DEFAULT_RETAINED_SKIPPED_KEYS, PICOMEMO_HARD_MAXIMUM_MESSAGE_JUMP, PICOMEMO_HARD_MAXIMUM_RETAINED_SKIPPED_KEYS, PICOMEMO_MAXIMUM_SESSION_STATE_BYTES, PICOMEMO_METADATA, PICOMEMO_SESSION_STATE_VERSION } from "../dist/index.js";
 
 test("exports exact source and artifact metadata", () => {
-    assert.equal(PICOMEMO_BACKEND_VERSION, "1.2.1+a4bad0297ea72ee75fbdb4afc899f65e8d85ae74");
-    assert.equal(PICOMEMO_METADATA.source.tree, "011b0bd1a0f4109856f7dfb633383efbe313cd3e");
+    assert.equal(PICOMEMO_BACKEND_VERSION, "1.2.1+06f4ca967005dbdc22fe775f67f25d75936b7cdc");
+    assert.equal(PICOMEMO_METADATA.source.tree, "d3c941ec4070ebdb2f4ee5d52d7494d4fd45e26f");
     assert.equal(PICOMEMO_METADATA.source.dirty, false);
     assert.equal(PICOMEMO_DEFAULT_MESSAGE_JUMP, 2000);
     assert.equal(PICOMEMO_HARD_MAXIMUM_MESSAGE_JUMP, 2000);

@@ -9,7 +9,7 @@ void run().then(finish, (error: unknown) => {
 });
 
 async function run(): Promise<void> {
-    assert(PICOMEMO_METADATA.artifacts.wasmSha256 === "c0dd1f11af4984216282ce6ea609e074738e88b64f1ab424004792303a847713", "metadata changed");
+    assert(PICOMEMO_METADATA.artifacts.wasmSha256 === "02c145957eea82a4c7f01d855e4a45fd5584e2634dcaedbd685d4a2c06e4592f", "metadata changed");
     await roundTrip("omemo2");
     await roundTrip("legacy");
     await legacyIVProfiles();

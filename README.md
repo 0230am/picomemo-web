@@ -231,7 +231,7 @@ Add the directives needed by the rest of your application. Removing `'wasm-unsaf
 - Never reuse a stale state value after an operation returned its replacement.
 - Version 0.2.0 accepts the implicit-v1 session envelope emitted by 0.1.1 and deterministically emits v2 after the next successful session operation. The native ratchet and skipped-key entry bytes are not reinterpreted or replaced.
 - `protocol: "omemo2"` implements the OMEMO 2 path from picomemo; `protocol: "legacy"` implements the legacy OMEMO path.
-- The package is experimental and currently pins picomemo tag `1.2.1` plus commit `a4bad0297ea72ee75fbdb4afc899f65e8d85ae74`.
+- The package is experimental and currently pins picomemo tag `1.2.1` plus downstream commit `06f4ca967005dbdc22fe775f67f25d75936b7cdc`.
 
 ## Reproducibility
 

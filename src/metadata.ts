@@ -6,8 +6,8 @@ export const PICOMEMO_METADATA = Object.freeze({
         upstreamRepository: "https://github.com/mierenhoop/picomemo.git",
         tag: "1.2.1",
         baseCommit: "616b7014ea293a1fd5f785b2535db5bdaa0acfdf",
-        commit: "a4bad0297ea72ee75fbdb4afc899f65e8d85ae74",
-        tree: "011b0bd1a0f4109856f7dfb633383efbe313cd3e",
+        commit: "06f4ca967005dbdc22fe775f67f25d75936b7cdc",
+        tree: "d3c941ec4070ebdb2f4ee5d52d7494d4fd45e26f",
         dirty: false,
     }),
     featureSet: "omemo0+omemo2",
@@ -15,7 +15,7 @@ export const PICOMEMO_METADATA = Object.freeze({
     artifacts: Object.freeze({
         declarationSha256: "cf2cf53c64ecec5b7a828cec061e11c7e6e61b1275cda9a278fe3b5bd2c9cabe",
         loaderSha256: "3c54df4326d828425e5568c1986a460f824d0d2259f3d3511a0c7e589ebcf653",
-        wasmSha256: "c0dd1f11af4984216282ce6ea609e074738e88b64f1ab424004792303a847713",
+        wasmSha256: "02c145957eea82a4c7f01d855e4a45fd5584e2634dcaedbd685d4a2c06e4592f",
     }),
 });
 

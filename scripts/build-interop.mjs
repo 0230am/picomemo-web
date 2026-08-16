@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { rmSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { assertEmscripten, assertMbedTLS, assertPinnedGit } from "./cache-integrity.mjs";
@@ -8,7 +9,7 @@ const lock = JSON.parse(await readFile(path.join(root, "build-lock.json"), "utf8
 const picomemo = path.resolve(process.env.PICOMEMO_SOURCE_DIR ?? path.join(root, `.cache/picomemo-${lock.picomemo.tag}-${lock.picomemo.commit}`));
 const mbedtls = path.resolve(process.env.PICOMEMO_MBEDTLS_DIR ?? path.join(root, `.cache/mbedtls-${lock.mbedtls.version}-${lock.mbedtls.sourceInputsSha256.slice(0, 12)}-${lock.mbedtls.buildConfigurationSha256.slice(0, 12)}`));
 const emsdk = path.resolve(process.env.PICOMEMO_EMSDK_DIR ?? path.join(root, `.cache/emsdk-${lock.emscripten.version}`));
-const work = path.join(root, ".cache/picomemo-interop-2.1.0");
+const work = path.resolve(process.env.PICOMEMO_INTEROP_WORK_DIR ?? path.join(root, `.cache/picomemo-interop-2.1.0-${lock.picomemo.commit}`));
 const fixtures = path.join(work, "o");
 const emcc = path.join(emsdk, "upstream/emscripten", process.platform === "win32" ? "emcc.exe" : "emcc");
 const archive = path.resolve(process.env.PICOMEMO_MBEDTLS_ARCHIVE ?? path.join(root, `.cache/mbedtls-${lock.mbedtls.version}.tar.bz2`));
@@ -69,6 +70,7 @@ function compile(source, output, includeCore, omemo2 = true) {
 		"-O2", "-flto", "-s", "EXIT_RUNTIME=1", "-s", "NODERAWFS=1"
 	];
 	args.push("-o", output);
+	rmSync(output, { force: true });
 	run(emcc, args, root);
 }
 
@@ -86,6 +88,7 @@ function compileGenerated(source, output, omemo2) {
 		"-O2", "-flto", "-s", "EXIT_RUNTIME=1", "-s", "NODERAWFS=1",
 		"-o", output,
 	];
+	rmSync(output, { force: true });
 	run(emcc, args, root);
 }
 

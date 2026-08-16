@@ -41,8 +41,8 @@ async function clonePinned(repository, commit, directory) {
 function installEmscripten() {
     const script = path.join(emsdk, process.platform === "win32" ? "emsdk.bat" : "emsdk");
     if (process.platform === "win32") {
-        run("cmd.exe", ["/d", "/s", "/c", `"${script}" install ${lock.emscripten.version}`]);
-        run("cmd.exe", ["/d", "/s", "/c", `"${script}" activate ${lock.emscripten.version}`]);
+        run("cmd.exe", ["/d", "/s", "/c", "call", script, "install", lock.emscripten.version]);
+        run("cmd.exe", ["/d", "/s", "/c", "call", script, "activate", lock.emscripten.version]);
     } else {
         run(script, ["install", lock.emscripten.version]);
         run(script, ["activate", lock.emscripten.version]);

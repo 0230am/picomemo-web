@@ -5,8 +5,8 @@ import test from "node:test";
 
 const metadata = JSON.parse(await readFile(new URL("../source-metadata.json", import.meta.url), "utf8"));
 test("source metadata records the exact clean native commit", () => {
-    assert.equal(metadata.picomemo.commit, "a4bad0297ea72ee75fbdb4afc899f65e8d85ae74");
-    assert.equal(metadata.picomemo.tree, "011b0bd1a0f4109856f7dfb633383efbe313cd3e");
+    assert.equal(metadata.picomemo.commit, "06f4ca967005dbdc22fe775f67f25d75936b7cdc");
+    assert.equal(metadata.picomemo.tree, "d3c941ec4070ebdb2f4ee5d52d7494d4fd45e26f");
     assert.equal(metadata.picomemo.dirty, false);
     assert.equal("patchSha256" in metadata.picomemo, false);
 });

@@ -7,7 +7,7 @@ const lock = JSON.parse(await readFile(path.join(root, "build-lock.json"), "utf8
 const environment = path.resolve(process.env.PICOMEMO_PYTHON_ENV ?? path.join(root, ".cache/picomemo-python-2.1.0"));
 const python = process.platform === "win32" ? path.join(environment, "Scripts/python.exe") : path.join(environment, "bin/python");
 const picomemo = path.resolve(process.env.PICOMEMO_SOURCE_DIR ?? path.join(root, `.cache/picomemo-${lock.picomemo.tag}-${lock.picomemo.commit}`));
-const work = path.join(root, ".cache/picomemo-interop-2.1.0");
+const work = path.resolve(process.env.PICOMEMO_INTEROP_WORK_DIR ?? path.join(root, `.cache/picomemo-interop-2.1.0-${lock.picomemo.commit}`));
 const script = path.join(picomemo, "test/initsession.py");
 const binary = path.join(work, "omemo-interop.cjs");
 const result = spawnSync(python, [script, "bundle2", binary], {
