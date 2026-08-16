@@ -135,6 +135,25 @@ test("malformed nested success terminates the Worker and rejects every concurren
     assert.equal(worker.terminated, true);
 });
 
+test("invalid successful Worker responses identify the protocol, operation, and rejected field", async () => {
+    const worker = new FakeWorker((request) => ({
+        id: request.id,
+        ok: true,
+        value: {
+            localState: Uint8Array.of(1),
+            state: { session: Uint8Array.of(1), skippedKeys: new Uint8Array(4) },
+            identityKey: new Uint8Array(32),
+            key: new Uint8Array(31),
+        },
+    }));
+    const backend = createPicomemoBackend({ protocol: "legacy", workerFactory: () => worker });
+    await assert.rejects(
+        backend.decryptKey(Uint8Array.of(1), undefined, true, Uint8Array.of(1)),
+        /invalid success response for legacy\/decrypt: The OMEMO Worker returned an invalid legacy decrypted key length 31 \(expected 32\)/,
+    );
+    assert.equal(worker.terminated, true);
+});
+
 test("rejects unknown bundle input fields before constructing a Worker", async () => {
     let constructed = false;
     const bundle = {

@@ -195,7 +195,10 @@ class WorkerPicomemoBackend {
         if (this.worker) return this.worker;
         const worker = this.workerFactory();
         worker.onmessage = (event: MessageEvent<PicomemoWorkerResponse>) => this.handleResponse(event.data);
-        worker.onerror = () => this.handleWorkerFailure(new Error("The OMEMO cryptographic Worker failed."));
+        worker.onerror = (event) => {
+            const detail = event.message.trim();
+            this.handleWorkerFailure(new Error(`The OMEMO cryptographic Worker failed${detail ? `: ${detail}` : "."}`));
+        };
         worker.onmessageerror = () => this.handleWorkerFailure(new Error("The OMEMO cryptographic Worker returned an invalid message."));
         this.worker = worker;
         return worker;
@@ -216,8 +219,9 @@ class WorkerPicomemoBackend {
             let value: unknown;
             try {
                 value = expectSuccessValue(response.value, pending);
-            } catch {
-                this.handleWorkerFailure(new Error("The OMEMO cryptographic Worker returned an invalid success response."));
+            } catch (cause) {
+                const detail = cause instanceof Error ? cause.message : "Unknown validation failure.";
+                this.handleWorkerFailure(new Error(`The OMEMO cryptographic Worker returned an invalid success response for ${pending.protocol}/${pending.operation}: ${detail}`));
                 return;
             }
             this.pending.delete(response.id);
@@ -262,7 +266,7 @@ function expectSuccessValue(value: unknown, pending: PendingWorkerRequest): unkn
         case "encrypt": return expectEncryptedKey(value);
         case "decrypt": {
             const result = expectDecryptedKey(value);
-            if (pending.protocol === "legacy" && result.key.length !== 32) throw new TypeError("The OMEMO Worker returned an invalid legacy decrypted key.");
+            if (pending.protocol === "legacy" && result.key.length !== 32) throw new TypeError(`The OMEMO Worker returned an invalid legacy decrypted key length ${result.key.length} (expected 32).`);
             return result;
         }
         case "maintain": return expectSessionMaintenance(value);
@@ -376,7 +380,8 @@ function expectEncryptedPayload(value: unknown, protocol: PicomemoProtocol): Pic
 }
 
 function expectBytes(value: unknown, minimum: number, maximum: number, name: string): Uint8Array {
-    if (!(value instanceof Uint8Array) || value.length < minimum || value.length > maximum) throw new TypeError(`The OMEMO Worker returned invalid ${name}.`);
+    if (!(value instanceof Uint8Array)) throw new TypeError(`The OMEMO Worker returned invalid ${name} (expected bytes).`);
+    if (value.length < minimum || value.length > maximum) throw new TypeError(`The OMEMO Worker returned invalid ${name} length ${value.length} (expected ${minimum}-${maximum}).`);
     return value;
 }
 
@@ -444,7 +449,8 @@ function expectErrorCounters(value: unknown): PicomemoErrorCounters {
 function validateSkippedKeyState(value: Uint8Array): void {
     if (value.length < 4) throw new TypeError("Invalid picomemo skipped-key state.");
     const count = new DataView(value.buffer, value.byteOffset, value.byteLength).getUint32(0, true);
-    if (count > PICOMEMO_HARD_MAXIMUM_RETAINED_SKIPPED_KEYS || value.length !== 4 + count * 68) throw new TypeError("Invalid picomemo skipped-key state.");
+    const expectedLength = 4 + count * 68;
+    if (count > PICOMEMO_HARD_MAXIMUM_RETAINED_SKIPPED_KEYS || value.length !== expectedLength) throw new TypeError(`Invalid picomemo skipped-key state (count ${count}, length ${value.length}, expected ${expectedLength}).`);
 }
 
 function validateLimit(value: unknown, maximum: number, name: string): number {
