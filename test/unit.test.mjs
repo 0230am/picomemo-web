@@ -1,6 +1,46 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { selectPreKey, uniformRandomIndex } from "../dist/uniform-random.js";
 import { createPicomemoBackend, isPicomemoBackendVersionCompatible, PicomemoError, PICOMEMO_BACKEND_VERSION, PICOMEMO_COMPATIBLE_BACKEND_VERSIONS, PICOMEMO_DEFAULT_MESSAGE_JUMP, PICOMEMO_DEFAULT_RETAINED_SKIPPED_KEYS, PICOMEMO_HARD_MAXIMUM_MESSAGE_JUMP, PICOMEMO_HARD_MAXIMUM_RETAINED_SKIPPED_KEYS, PICOMEMO_MAXIMUM_SESSION_STATE_BYTES, PICOMEMO_METADATA, PICOMEMO_SESSION_STATE_VERSION } from "../dist/index.js";
+
+test("selects PreKey indexes uniformly across the accepted uint32 interval", () => {
+    const counts = [0, 0, 0];
+    for (let value = 0; value < 30; value++) counts[uniformRandomIndex(3, () => value)]++;
+    assert.deepEqual(counts, [10, 10, 10]);
+    assert.equal(uniformRandomIndex(100, () => 4_294_967_199), 99);
+});
+
+test("rejects the modulo-biased uint32 tail before selecting a PreKey", () => {
+    const values = [0xffff_ffff, 8];
+    let reads = 0;
+    assert.equal(uniformRandomIndex(3, () => values[reads++]), 2);
+    assert.equal(reads, 2);
+});
+
+for (const invalidIndex of [0, 1]) test(`validates mixed PreKey bundle before entropy when entry ${invalidIndex} is invalid`, () => {
+    const preKeys = [{ id: 1, publicKey: new Uint8Array(32) }, { id: 2, publicKey: new Uint8Array(32) }];
+    preKeys[invalidIndex].publicKey = new Uint8Array(31);
+    let entropyReads = 0;
+    assert.throws(() => selectPreKey(preKeys, () => { entropyReads++; return 0; }), /Invalid PreKey/);
+    assert.equal(entropyReads, 0);
+});
+
+test("validates every PreKey ID before entropy", () => {
+    const preKeys = [{ id: 1, publicKey: new Uint8Array(32) }, { id: 0, publicKey: new Uint8Array(32) }];
+    let entropyReads = 0;
+    assert.throws(() => selectPreKey(preKeys, () => { entropyReads++; return 0; }), /Invalid PreKey ID/);
+    assert.equal(entropyReads, 0);
+});
+
+for (const [name, length, value] of [
+    ["empty range", 0, 0],
+    ["fractional range", 1.5, 0],
+    ["negative entropy", 1, -1],
+    ["fractional entropy", 1, 0.5],
+    ["overflowing entropy", 1, 0x1_0000_0000],
+]) test(`rejects ${name} for PreKey selection`, () => {
+    assert.throws(() => uniformRandomIndex(length, () => value), RangeError);
+});
 
 test("exports exact source and artifact metadata", () => {
     assert.equal(PICOMEMO_BACKEND_VERSION, "1.2.1+06f4ca967005dbdc22fe775f67f25d75936b7cdc");

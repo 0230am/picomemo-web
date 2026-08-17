@@ -23,6 +23,8 @@ const required = [
     "dist/metadata.js",
     "dist/types.d.ts",
     "dist/types.js",
+    "dist/uniform-random.d.ts",
+    "dist/uniform-random.js",
     "dist/worker.d.ts",
     "dist/worker.js",
     "package.json",

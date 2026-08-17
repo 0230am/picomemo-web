@@ -37,6 +37,23 @@ async function malformedRequestsFailClosed(): Promise<void> {
         assert(!nestedState.ok && nestedState.error.operation === "worker-request", "unknown nested state field was accepted");
         const nestedBundle = await post(worker, { id: 4, operation: "initiate", protocol: "omemo2", store: new Uint8Array(1), bundle: { identityKey: new Uint8Array(32), signedPreKey: new Uint8Array(32), signedPreKeySignature: new Uint8Array(64), signedPreKeyId: 1, preKeys: [{ id: 2, publicKey: new Uint8Array(32), extra: true }] } });
         assert(!nestedBundle.ok && nestedBundle.error.operation === "worker-request", "unknown nested bundle field was accepted");
+        let requestId = 10;
+        for (const protocol of ["omemo2", "legacy"] as const) {
+            const fixture = createPicomemoBackend({ protocol });
+            let localState: Uint8Array;
+            let validBundle;
+            try {
+                localState = await fixture.createIdentity();
+                validBundle = await fixture.createBundle(await fixture.createIdentity());
+            } finally {
+                fixture.terminate();
+            }
+            const mixedBundle = { ...validBundle, preKeys: [validBundle.preKeys[0]!, { ...validBundle.preKeys[1]!, publicKey: new Uint8Array(31) }] };
+            for (let attempt = 0; attempt < 16; attempt++) {
+                const response = await post(worker, { id: requestId++, operation: "initiate", protocol, store: localState, bundle: mixedBundle });
+                assert(!response.ok && response.error.operation === "initiate", `${protocol} mixed-validity PreKey bundle was accepted`);
+            }
+        }
         const invalidId = await post(worker, { id: Number.NaN, operation: "setup", protocol: "omemo2" });
         assert(!invalidId.ok && invalidId.id === 0, "invalid Worker request ID was accepted");
         const omemo2IV = await post(worker, { id: 5, operation: "decrypt-payload", protocol: "omemo2", key: new Uint8Array(48), iv: new Uint8Array(12), payload: new Uint8Array(16) });

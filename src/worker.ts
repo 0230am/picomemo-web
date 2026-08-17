@@ -3,6 +3,7 @@
 import createPicomemoModule from "./generated/picomemo.mjs";
 import { PICOMEMO_HARD_MAXIMUM_MESSAGE_JUMP, PICOMEMO_HARD_MAXIMUM_RETAINED_SKIPPED_KEYS } from "./metadata.js";
 import type { PicomemoBundle, PicomemoErrorData, PicomemoProtocol, PicomemoWorkerRequest, PicomemoWorkerResponse, PicomemoWorkerSessionState } from "./types.js";
+import { selectPreKey } from "./uniform-random.js";
 
 const scope = self as DedicatedWorkerGlobalScope;
 
@@ -123,11 +124,8 @@ function initiate(module: Module, protocol: PicomemoProtocol, store: Uint8Array,
     exact(remote.identityKey, 32, "identity key");
     exact(remote.signedPreKey, 32, "signed PreKey");
     exact(remote.signedPreKeySignature, 64, "signed PreKey signature");
-    if (!Array.isArray(remote.preKeys) || remote.preKeys.length < 1 || remote.preKeys.length > 100) throw new RangeError("Invalid PreKeys.");
-    const selected = remote.preKeys[0];
-    exact(selected.publicKey, 32, "PreKey");
     identifier(remote.signedPreKeyId, "signed PreKey ID");
-    identifier(selected.id, "PreKey ID");
+    const selected = selectPreKey(remote.preKeys, secureRandomUint32);
 
     return withBytes(module, [store, remote.identityKey, remote.signedPreKey, remote.signedPreKeySignature, selected.publicKey], ([storePointer, identity, signedPreKey, signature, preKey]) => withAllocations(module, [1024], ([out]) => {
         const length = checked(protocol === "legacy"
@@ -135,6 +133,12 @@ function initiate(module: Module, protocol: PicomemoProtocol, store: Uint8Array,
             : module._picomemoWebInitiateSession(storePointer, store.length, identity, signedPreKey, signature, remote.signedPreKeyId, preKey, selected.id, out, 1024), "initiate session");
         return { session: copy(module, out, length), skippedKeys: new Uint8Array(4) };
     }));
+}
+
+function secureRandomUint32(): number {
+    const value = new Uint32Array(1);
+    crypto.getRandomValues(value);
+    return value[0]!;
 }
 
 function encrypt(module: Module, protocol: PicomemoProtocol, state: PicomemoWorkerSessionState, key: Uint8Array): { state: PicomemoWorkerSessionState; message: Uint8Array; preKey: boolean } {
