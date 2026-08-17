@@ -1,6 +1,8 @@
 # picomemo
 
-Experimental browser binding for [picomemo](https://github.com/mierenhoop/picomemo), providing legacy OMEMO and OMEMO 2 cryptographic operations through a dedicated Web Worker and WebAssembly.
+An experimental browser binding for the [Picomemo C library](https://github.com/mierenhoop/picomemo), providing legacy OMEMO and OMEMO 2 cryptographic operations through a dedicated Web Worker and WebAssembly.
+
+**This npm package is an unofficial browser binding for Picomemo. It is not published, maintained, or endorsed by the upstream Picomemo project.**
 
 The npm package ships ready-to-use JavaScript, TypeScript declarations, a module Worker, the Emscripten loader, and the compiled WASM binary. Application developers do not need Emscripten or a C toolchain.
 

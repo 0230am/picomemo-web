@@ -1,6 +1,6 @@
 /** Exact package, source, feature, toolchain-artifact identity for auditing. */
 export const PICOMEMO_METADATA = Object.freeze({
-    package: Object.freeze({ name: "picomemo", version: "0.2.0", status: "experimental-unofficial" }),
+    package: Object.freeze({ name: "picomemo", version: "0.2.1", status: "experimental-unofficial" }),
     source: Object.freeze({
         repository: "https://github.com/0230am/picomemo.git",
         upstreamRepository: "https://github.com/mierenhoop/picomemo.git",

@@ -35,10 +35,27 @@ test("published README documents a usable browser integration", async () => {
         "## Worker lifecycle and errors",
         "## Content Security Policy",
         "npm install picomemo@experimental",
+        "This npm package is an unofficial browser binding for Picomemo",
+        "not published, maintained, or endorsed by the upstream Picomemo project",
         "createPicomemoBackend",
         "decryptKey",
         "terminate",
     ]) assert.ok(readme.includes(required), `README is missing ${required}`);
+});
+
+test("published package metadata is release-aligned and identifies the binding as unofficial", async () => {
+    const root = new URL("../", import.meta.url);
+    const pkg = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
+    const sourceMetadata = JSON.parse(await readFile(new URL("source-metadata.json", root), "utf8"));
+    const generatedMetadata = await readFile(new URL("src/metadata.ts", root), "utf8");
+    const thirdPartyNotices = await readFile(new URL("THIRD_PARTY_NOTICES.md", root), "utf8");
+
+    assert.match(pkg.description, /unofficial browser binding for the Picomemo C library/);
+    assert.equal(sourceMetadata.package.version, pkg.version);
+    assert.match(generatedMetadata, new RegExp(`version: ["']${pkg.version.replaceAll(".", "\\.")}["']`));
+    assert.ok(thirdPartyNotices.includes(
+        `downstream commit \`${sourceMetadata.picomemo.commit}\`, tree \`${sourceMetadata.picomemo.tree}\``,
+    ), "third-party notice must identify the packaged Picomemo commit and tree");
 });
 
 async function collect(directory) {
