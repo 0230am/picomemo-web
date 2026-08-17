@@ -196,7 +196,7 @@ class WorkerPicomemoBackend {
         const worker = this.workerFactory();
         worker.onmessage = (event: MessageEvent<PicomemoWorkerResponse>) => this.handleResponse(event.data);
         worker.onerror = (event) => {
-            const detail = event.message.trim();
+            const detail = typeof event.message === "string" ? event.message.trim() : "";
             this.handleWorkerFailure(new Error(`The OMEMO cryptographic Worker failed${detail ? `: ${detail}` : "."}`));
         };
         worker.onmessageerror = () => this.handleWorkerFailure(new Error("The OMEMO cryptographic Worker returned an invalid message."));

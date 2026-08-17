@@ -81,6 +81,15 @@ test("termination rejects pending work and creates no fallback", async () => {
     assert.equal(worker.terminated, true);
 });
 
+test("message-less Worker errors fail closed without masking the failure", async () => {
+    const worker = new FakeWorker(() => undefined);
+    const backend = createPicomemoBackend({ protocol: "legacy", workerFactory: () => worker });
+    const pending = backend.createIdentity();
+    worker.onerror?.({});
+    await assert.rejects(pending, /^Error: The OMEMO cryptographic Worker failed\.$/);
+    assert.equal(worker.terminated, true);
+});
+
 test("rejects invalid protocols", () => {
     assert.throws(() => createPicomemoBackend({ protocol: "other" }), /protocol/);
 });
